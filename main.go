@@ -10,12 +10,12 @@ import (
 	"strconv"
 	"time"
 
-	tmDB "github.com/tendermint/tendermint/libs/db"
+	tdb "github.com/tendermint/tendermint/libs/db"
 )
 
 const (
-	totalSteps    = 1000
-	eachStepScale = 1000000
+	totalSteps    = 100
+	eachStepScale = 100
 
 	valueLen = 24
 
@@ -28,10 +28,10 @@ func cleanupDBDir(name, dir string) {
 	}
 }
 
-type dbTestFunc = func(int, int, tmDB.DB) string
+type dbTestFunc = func(int, int, tdb.DB) string
 
-func testDB(name, dir string, dtype tmDB.BackendType, steps, stepScale int, suite map[string]dbTestFunc) {
-	db := tmDB.NewDB(name, dtype, dir)
+func testDB(name, dir string, dtype tdb.DBBackendType, steps, stepScale int, suite map[string]dbTestFunc) {
+	db := tdb.NewDB(name, dtype, dir)
 	defer cleanupDBDir(name, dir)
 
 	for step := 0; step < totalSteps; step++ {
@@ -42,12 +42,10 @@ func testDB(name, dir string, dtype tmDB.BackendType, steps, stepScale int, suit
 		fmt.Printf("! step %d done\n", step+1)
 	}
 
-	if err := db.Close(); err != nil {
-		panic(err)
-	}
+	db.Close()
 }
 
-func setSync(stepScale, scale int, db tmDB.DB) string {
+func setSync(stepScale, scale int, db tdb.DB) string {
 	start := time.Now()
 	for i := 0; i < stepScale; i++ {
 		key := []byte(strconv.Itoa(scale + i))
@@ -55,17 +53,18 @@ func setSync(stepScale, scale int, db tmDB.DB) string {
 		if _, err := rand.Read(val); err != nil {
 			panic(err)
 		}
-		if err := db.SetSync(key, []byte(hex.EncodeToString(val))); err != nil {
-			panic(err)
-		}
+
+		db.SetSync(key, []byte(hex.EncodeToString(val)))
 	}
 	return fmt.Sprintf("setSync, %d, %dms", stepScale, time.Since(start).Milliseconds())
 }
 
-func setInBatch(stepScale, scale int, db tmDB.DB) string {
+func setInBatch(stepScale, scale int, db tdb.DB) string {
 	start := time.Now()
+
 	batch := db.NewBatch()
 	defer batch.Close()
+
 	for i := 0; i < stepScale; i++ {
 		key := []byte(strconv.Itoa(scale + i))
 		val := make([]byte, valueLen)
@@ -76,25 +75,22 @@ func setInBatch(stepScale, scale int, db tmDB.DB) string {
 	}
 	// for goleveldb backend, Write & WriteSync are actually the same thing
 	// but for others, it's different
-	if err := batch.WriteSync(); err != nil {
-		panic(err)
-	}
+	batch.WriteSync()
+
 	return fmt.Sprintf("setInBatch, %d, %dms", stepScale, time.Since(start).Milliseconds())
 }
 
-func getRand(stepScale, scale int, db tmDB.DB) string {
+func getRand(stepScale, scale int, db tdb.DB) string {
 	start := time.Now()
 	getCount := stepScale / 100
 	for i := 0; i < getCount; i++ {
 		key := []byte(strconv.Itoa(mrand.Intn(scale + stepScale)))
-		if _, err := db.Get(key); err != nil {
-			panic(err)
-		}
+		db.Get(key)
 	}
 	return fmt.Sprintf("getRand, %d, %dms", getCount, time.Since(start).Milliseconds())
 }
 
-func stat(stepScale, scale int, db tmDB.DB) string {
+func stat(stepScale, scale int, db tdb.DB) string {
 	statStr := "["
 	start := time.Now()
 	for key, val := range db.Stats() {
@@ -105,12 +101,12 @@ func stat(stepScale, scale int, db tmDB.DB) string {
 }
 
 // find a way to warp this & make it work
-func reopen(name, dir string, dtype tmDB.BackendType, scale int, db tmDB.DB) string {
+// TODO: fix this
+func reopen(name, dir string, dtype tdb.DBBackendType, scale int, db tdb.DB) string {
 	start := time.Now()
-	if err := db.Close(); err != nil {
-		panic(err)
-	}
-	db = tmDB.NewDB(name, dtype, dir)
+	db.Close()
+
+	db = tdb.NewDB(name, dtype, dir)
 	return fmt.Sprintf("reopen, %dms", time.Since(start).Milliseconds())
 }
 
@@ -122,13 +118,13 @@ func main() {
 		"setSync": setSync,
 		"getRand": getRand,
 	}
-	testDB("direct_fsdb", testDir, tmDB.FSDBBackend, 5, eachStepScale, directSuite)
-	testDB("direct_goleveldb", testDir, tmDB.GoLevelDBBackend, totalSteps, eachStepScale, directSuite)
+	testDB("direct_fsdb", testDir, tdb.FSDBBackend, 10, eachStepScale, directSuite)
+	testDB("direct_goleveldb", testDir, tdb.GoLevelDBBackend, totalSteps, eachStepScale, directSuite)
 
 	// batch
 	batchSuite := map[string]dbTestFunc{
 		"setInBatch": setInBatch,
 		"getRand":    getRand,
 	}
-	testDB("batch_goleveldb", testDir, tmDB.GoLevelDBBackend, batchSuite)
+	testDB("batch_goleveldb", testDir, tdb.GoLevelDBBackend, totalSteps, eachStepScale, batchSuite)
 }
