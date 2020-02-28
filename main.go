@@ -14,8 +14,8 @@ import (
 )
 
 const (
-	totalSteps    = 100
-	eachStepScale = 100
+	totalSteps    = 1000
+	eachStepScale = 1000000
 
 	valueLen = 24
 
@@ -34,7 +34,7 @@ func testDB(name, dir string, dtype tdb.DBBackendType, steps, stepScale int, sui
 	db := tdb.NewDB(name, dtype, dir)
 	defer cleanupDBDir(name, dir)
 
-	for step := 0; step < totalSteps; step++ {
+	for step := 0; step < steps; step++ {
 		scale := step * eachStepScale
 		for testName, test := range suite {
 			fmt.Printf("%s, %s, %d, %s\n", name, testName, scale, test(stepScale, scale, db))
